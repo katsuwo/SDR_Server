@@ -1,0 +1,5 @@
+S3_STORAGE:
+    S3_endpoint_url: https://192.168.10.111:9000
+    S3_access_key_id: your s3 access key id
+    S3_secret_access_key: your secret access key
+    S3_bucket_name: bukect_name
