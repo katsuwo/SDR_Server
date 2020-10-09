@@ -1,4 +1,4 @@
-from flask import Flask,jsonify,session
+from flask import Flask,jsonify,session,send_file, make_response, send_from_directory
 import boto3
 from botocore.exceptions import ClientError
 import yaml
@@ -15,6 +15,7 @@ TEMPDIR = '/home/katsuwo/work/SDR_TEMP'
 app = Flask(__name__)
 app.secret_key = 'secret'
 
+
 class JSONEncoder(json.JSONEncoder):
 	def default(self, o):
 		if isinstance(o, ObjectId):
@@ -23,8 +24,8 @@ class JSONEncoder(json.JSONEncoder):
 
 # ex
 # /filelist/2020-02-10/120_5MHz
-@app.route('/filelist/<date>', methods=['GET'])
-@app.route('/filelist/<date>/<freq>', methods=['GET'])
+@app.route('/filelist/<string:date>', methods=['GET'])
+@app.route('/filelist/<string:date>/<string:freq>', methods=['GET'])
 def get_file_list(date=None, freq=None):
 	config = read_configuration_file(CONFIGFILE)
 	try:
@@ -60,6 +61,7 @@ def get_file_list(date=None, freq=None):
 		items.append(content['Key'])
 	return JSONEncoder().encode({'Items': items})
 
+
 @app.route('/clear', methods=['GET'])
 def clear_tmp_files():
 	print(f"uuid is {str(session['uuid'])}")
@@ -72,7 +74,8 @@ def clear_tmp_files():
 		return "success."
 	return "failed"
 
-@app.route('/freqlist/<date>', methods=['GET'])
+
+@app.route('/freqlist/<string:date>', methods=['GET'])
 def get_freq_list(date=None):
 	config = read_configuration_file(CONFIGFILE)
 	try:
@@ -105,13 +108,13 @@ def get_freq_list(date=None):
 	return JSONEncoder().encode({'Items': freq_list})
 
 
-#ex.
-#/preparefiles/2010-10-06_23-59
-#/preparefiles/2010-10-06_23-59/120_5MHz
-#/preparefiles/2010-10-06_23-59?duration=30
-#/preparefiles/2010-10-06_23-59/120_5MHz?duration=30
-@app.route('/preparefiles/<start_date_time>/', methods=['GET'])
-@app.route('/preparefiles/<start_date_time>/<freq>', methods=['GET'])
+# ex.
+# /preparefiles/2010-10-06_23-59
+# /preparefiles/2010-10-06_23-59/120_5MHz
+# /preparefiles/2010-10-06_23-59?duration=30
+# /preparefiles/2010-10-06_23-59/120_5MHz?duration=30
+@app.route('/preparefiles/<string:start_date_time>/', methods=['GET'])
+@app.route('/preparefiles/<string:start_date_time>/<string:freq>', methods=['GET'])
 def prepare_files(start_date_time=None, freq=None):
 
 	dulation = 60
@@ -170,9 +173,20 @@ def prepare_files(start_date_time=None, freq=None):
 		print(f"Downloading.{file}")
 		temp_file = os.path.join(temp_dir, os.path.basename(file))
 		s3.download_file(bucket_name, file, temp_file)
-		temp_file_list.append(temp_file)
+		temp_file_list.append(os.path.basename(file))
 	return JSONEncoder().encode({'Items': temp_file_list})
 
+
+@app.route('/getaudiofile/<string:filename>', methods=['GET'])
+def get_file(filename):
+	if 'uuid'not in session:
+		return "uuid does not exists in session."
+	temp_dir = os.path.join(TEMPDIR, str(session['uuid']))
+
+	fullpath = os.path.join(temp_dir, filename)
+	if os.path.exists(fullpath):
+		return send_file(fullpath, as_attachment=True, attachment_filename=filename, mimetype="audio/ogg")
+	return "something bad."
 
 @app.route('/')
 def hello_world():
