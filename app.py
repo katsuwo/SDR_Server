@@ -1,4 +1,4 @@
-from flask import Flask,jsonify,session,send_file, make_response, send_from_directory
+from flask import Flask, jsonify, session, send_file, make_response, send_from_directory, Response
 import boto3
 from botocore.exceptions import ClientError
 import yaml
@@ -6,8 +6,10 @@ import os
 import json
 import uuid
 import shutil
+import glob
 from bson import ObjectId
 import datetime
+import subprocess
 
 CONFIGFILE = './config.yaml'
 TEMPDIR = '/home/katsuwo/work/SDR_TEMP'
@@ -35,7 +37,7 @@ def get_file_list(date=None, freq=None):
 		return e.args[0]
 	except Exception as e:
 		print(e)
-		return "something bad."
+		return Response(response=json.dumps({'message': 'something bad.'}), status=500)
 
 	try:
 		bucket_name = config['S3_STORAGE']['S3_bucket_name']
@@ -49,10 +51,7 @@ def get_file_list(date=None, freq=None):
 		else:
 			bucket = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
 	except ClientError as e:
-		return e.args[0]
-
-	if 'uuid' not in session:
-		session['uuid'] = uuid.uuid1()
+		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
 
 	items = []
 	if 'Contents' not in bucket:
@@ -63,16 +62,17 @@ def get_file_list(date=None, freq=None):
 
 
 @app.route('/clear', methods=['GET'])
-def clear_tmp_files():
-	print(f"uuid is {str(session['uuid'])}")
-	if 'uuid' in session:
-		temp_dir = os.path.join(TEMPDIR, str(session['uuid']))
+@app.route('/clear/<string:uuid_>', methods=['GET'])
+def clear_tmp_files(uuid_=None):
+	if uuid_ is not None:
+		temp_dir = os.path.join(TEMPDIR, uuid_)
 		shutil.rmtree(temp_dir)
 		print(f"delete {temp_dir}")
-		print(f"delete uuid:{str(session['uuid'])} from session dictionary.")
-		del session['uuid']
-		return "success."
-	return "failed"
+	else:
+		for temp_dir in glob.glob(TEMPDIR + "/*"):
+			shutil.rmtree(temp_dir)
+			print(f"delete {temp_dir}")
+	return Response(response=json.dumps({'message': 'success'}), status=200)
 
 
 @app.route('/freqlist/<string:date>', methods=['GET'])
@@ -82,10 +82,10 @@ def get_freq_list(date=None):
 		check_config(config)
 		s3 = setup_S3_client(config)
 	except ValueError as e:
-		return e.args[0]
+		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
 	except Exception as e:
 		print(e)
-		return "something bad."
+		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
 
 	try:
 		bucket_name = config['S3_STORAGE']['S3_bucket_name']
@@ -100,24 +100,17 @@ def get_freq_list(date=None):
 				temp_list.append(content['Key'].split("/")[1])
 			freq_list = list(set(temp_list))
 	except ClientError as e:
-		return e.args[0]
-
-	if 'uuid' not in session:
-		session['uuid'] = uuid.uuid1()
+		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
 
 	return JSONEncoder().encode({'Items': freq_list})
 
 
 # ex.
-# /preparefiles/2010-10-06_23-59
-# /preparefiles/2010-10-06_23-59/120_5MHz
-# /preparefiles/2010-10-06_23-59?duration=30
-# /preparefiles/2010-10-06_23-59/120_5MHz?duration=30
-@app.route('/preparefiles/<string:start_date_time>/', methods=['GET'])
-@app.route('/preparefiles/<string:start_date_time>/<string:freq>', methods=['GET'])
-def prepare_files(start_date_time=None, freq=None):
-
-	dulation = 60
+# /preparefiles/2010-10-06_23-59/60
+# /preparefiles/2010-10-06_23-59/60/120_5MHz
+@app.route('/preparefiles/<string:start_date_time>/<int:duration>', methods=['GET'])
+@app.route('/preparefiles/<string:start_date_time>/<int:duration>/<string:freq>', methods=['GET'])
+def prepare_files(start_date_time=None, duration=60, freq=None):
 
 	config = read_configuration_file(CONFIGFILE)
 	try:
@@ -129,9 +122,8 @@ def prepare_files(start_date_time=None, freq=None):
 		print(e)
 		return "something bad."
 
-	if 'uuid'not in session:
-		session['uuid'] = uuid.uuid1()
-	temp_dir = os.path.join(TEMPDIR, str(session['uuid']))
+	uuid_ = str(uuid.uuid1())
+	temp_dir = os.path.join(TEMPDIR, uuid_)
 
 	if os.path.exists(temp_dir):
 		shutil.rmtree(temp_dir)
@@ -154,7 +146,7 @@ def prepare_files(start_date_time=None, freq=None):
 		return JSONEncoder().encode({'Items': []})
 
 	# make file list
-	for delta in range(dulation):
+	for delta in range(duration):
 		delta = datetime.timedelta(minutes=delta)
 		find_time = temp_datetime + delta
 		find_datetime_string = datetime.datetime.strftime(find_time, '%Y_%m_%d__%H_%M_%S')
@@ -174,18 +166,21 @@ def prepare_files(start_date_time=None, freq=None):
 		temp_file = os.path.join(temp_dir, os.path.basename(file))
 		s3.download_file(bucket_name, file, temp_file)
 		temp_file_list.append(os.path.basename(file))
-	return JSONEncoder().encode({'Items': temp_file_list})
+	return JSONEncoder().encode({'Items': temp_file_list, "uuid": uuid_})
 
 
-@app.route('/getaudiofile/<string:filename>', methods=['GET'])
-def get_file(filename):
-	if 'uuid'not in session:
-		return "uuid does not exists in session."
-	temp_dir = os.path.join(TEMPDIR, str(session['uuid']))
+@app.route('/getaudiofile/<uuid_>/<string:filename>', methods=['GET'])
+def get_file(uuid_, filename):
+	temp_dir = os.path.join(TEMPDIR, uuid_)
+	full_path = os.path.join(temp_dir, filename)
 
-	fullpath = os.path.join(temp_dir, filename)
-	if os.path.exists(fullpath):
-		return send_file(fullpath, as_attachment=True, attachment_filename=filename, mimetype="audio/ogg")
+	if os.path.exists(full_path.replace(".wav", ".ogg")):
+		if filename.split('.')[1] == "wav":
+			# ogg => wav
+			cmdline = f"oggdec -Q -o {full_path} {full_path.replace('.wav', '.ogg')}".split(" ")
+			subprocess.run(cmdline)
+			return send_file(full_path, as_attachment=True, attachment_filename=filename, mimetype="audio/wav")
+		return send_file(full_path, as_attachment=True, attachment_filename=filename, mimetype="audio/ogg")
 	return "something bad."
 
 @app.route('/')
