@@ -17,7 +17,6 @@ TEMPDIR = '/home/katsuwo/work/SDR_TEMP'
 app = Flask(__name__)
 app.secret_key = 'secret'
 
-
 class JSONEncoder(json.JSONEncoder):
 	def default(self, o):
 		if isinstance(o, ObjectId):
@@ -213,4 +212,4 @@ def setup_S3_client(config):
 
 
 if __name__ == '__main__':
-	app.run(host="192.168.10.31", port=5000)
+	app.run(host="192.168.10.51", port=5000)
