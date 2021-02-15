@@ -1,6 +1,0 @@
-S3_STORAGE:
-    S3_endpoint_url: https://192.168.10.72:9000
-    S3_access_key_id: ac_key_s3_katsuwo
-    S3_secret_access_key: mine7720
-    S3_bucket_name: sdrdata
-
