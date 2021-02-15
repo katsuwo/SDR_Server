@@ -37,7 +37,7 @@ def get_file_list(date=None, freq=None):
 		return e.args[0]
 	except Exception as e:
 		print(e)
-		return Response(response=json.dumps({'message': 'something bad.'}), status=500)
+		return Response(response=json.dumps({'message': 'something bad3.'}), status=500)
 
 	try:
 		bucket_name = config['S3_STORAGE']['S3_bucket_name']
@@ -51,7 +51,7 @@ def get_file_list(date=None, freq=None):
 		else:
 			bucket = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
 	except ClientError as e:
-		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
+		return Response(response=json.dumps({'message': 'something bad4.'}), status=400)
 
 	items = []
 	if 'Contents' not in bucket:
@@ -82,10 +82,10 @@ def get_freq_list(date=None):
 		check_config(config)
 		s3 = setup_S3_client(config)
 	except ValueError as e:
-		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
+		return Response(response=json.dumps({'message': 'something bad1.'}), status=400)
 	except Exception as e:
 		print(e)
-		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
+		return Response(response=json.dumps({'message': 'something bad2.'}), status=400)
 
 	try:
 		bucket_name = config['S3_STORAGE']['S3_bucket_name']
@@ -100,7 +100,7 @@ def get_freq_list(date=None):
 				temp_list.append(content['Key'].split("/")[1])
 			freq_list = list(set(temp_list))
 	except ClientError as e:
-		return Response(response=json.dumps({'message': 'something bad.'}), status=400)
+		return Response(response=json.dumps({'message': 'something bad8.'}), status=400)
 
 	return JSONEncoder().encode({'Items': freq_list})
 
@@ -120,7 +120,7 @@ def prepare_files(start_date_time=None, duration=60, freq=None):
 		return e.args[0]
 	except Exception as e:
 		print(e)
-		return "something bad."
+		return "something bad6."
 
 	uuid_ = str(uuid.uuid1())
 	temp_dir = os.path.join(TEMPDIR, uuid_)
@@ -181,7 +181,7 @@ def get_file(uuid_, filename):
 			subprocess.run(cmdline)
 			return send_file(full_path, as_attachment=True, attachment_filename=filename, mimetype="audio/wav")
 		return send_file(full_path, as_attachment=True, attachment_filename=filename, mimetype="audio/ogg")
-	return "something bad."
+	return "something bad7."
 
 @app.route('/')
 def hello_world():
@@ -213,4 +213,4 @@ def setup_S3_client(config):
 
 
 if __name__ == '__main__':
-	app.run()
+	app.run(host="192.168.10.31", port=5000)
